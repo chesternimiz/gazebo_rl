@@ -72,9 +72,11 @@ class TurtleBot2Env(robot_gazebo_env.RobotGazeboEnv):
         #rospy.Subscriber("/camera/depth/image_raw", Image, self._camera_depth_image_raw_callback)
         #rospy.Subscriber("/camera/depth/points", PointCloud2, self._camera_depth_points_callback)
         #rospy.Subscriber("/camera/rgb/image_raw", Image, self._camera_rgb_image_raw_callback)
-        rospy.Subscriber("/kobuki/laser/scan", LaserScan, self._laser_scan_callback)
+        #rospy.Subscriber("/kobuki/laser/scan", LaserScan, self._laser_scan_callback)
+        rospy.Subscriber("/scan", LaserScan, self._laser_scan_callback)
 
-        self._cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
+        #self._cmd_vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
+        self._cmd_vel_pub = rospy.Publisher('/mobile_base/commands/velocity', Twist, queue_size=1)
 
         self._check_publishers_connection()
 
@@ -166,7 +168,8 @@ class TurtleBot2Env(robot_gazebo_env.RobotGazeboEnv):
         rospy.logdebug("Waiting for /kobuki/laser/scan to be READY...")
         while self.laser_scan is None and not rospy.is_shutdown():
             try:
-                self.laser_scan = rospy.wait_for_message("/kobuki/laser/scan", LaserScan, timeout=5.0)
+                #self.laser_scan = rospy.wait_for_message("/kobuki/laser/scan", LaserScan, timeout=5.0)
+                self.laser_scan = rospy.wait_for_message("/scan", LaserScan, timeout=5.0)
                 rospy.logdebug("Current /kobuki/laser/scan READY=>")
 
             except:
