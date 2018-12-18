@@ -156,10 +156,12 @@ class GZMazeEnv(turtlebot2_env.TurtleBot2Env):
         TurtleBot2Env API DOCS
         :return:
         """
-        rospy.logdebug("Start Get Observation ==>")
+        #rospy.logdebug("Start Get Observation ==>")
         # We get the laser scan data
+        self._check_laser_scan_ready()
         laser_scan = self.get_laser_scan()
-
+        #print str(laser_scan)
+        #print len(laser_scan.ranges)
         #rospy.logdebug("BEFORE DISCRET _episode_done==>" + str(self._episode_done))
 
         discretized_observations = numpy.asarray(laser_scan.ranges)
@@ -172,15 +174,15 @@ class GZMazeEnv(turtlebot2_env.TurtleBot2Env):
         #rospy.logdebug("Observations==>" + str(discretized_observations))
         #rospy.logdebug("AFTER DISCRET_episode_done==>" + str(self._episode_done))
 
-        rospy.logdebug("END Get Observation ==>")
+        #rospy.logdebug("END Get Observation ==>")
         return discretized_observations
 
     def _is_done(self, observations):
 
-        if self._episode_done:
-            rospy.logdebug("TurtleBot2 is Too Close to wall==>" + str(self._episode_done))
-        else:
-            rospy.logerr("TurtleBot2 is Ok ==>")
+        #if self._episode_done:
+        #    rospy.logdebug("TurtleBot2 is Too Close to wall==>" + str(self._episode_done))
+        #else:
+        #    rospy.logerr("TurtleBot2 is Ok ==>")
 
         return self._episode_done
 
@@ -218,8 +220,8 @@ class GZMazeEnv(turtlebot2_env.TurtleBot2Env):
         max_laser_value = data.range_max
         min_laser_value = data.range_min
 
-        rospy.logdebug("data=" + str(data))
-        rospy.logwarn("mod=" + str(mod))
+        #rospy.logdebug("data=" + str(data))
+        #rospy.logwarn("mod=" + str(mod))
 
         for i, item in enumerate(data.ranges):
             if (i % mod == 0):

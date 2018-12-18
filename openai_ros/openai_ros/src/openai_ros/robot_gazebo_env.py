@@ -46,8 +46,9 @@ class RobotGazeboEnv(gym.Env):
         
         self.gazebo.unpauseSim()
         self._set_action(action)
-        self.gazebo.pauseSim()
         obs = self._get_obs()
+        self.gazebo.pauseSim()
+
         done = self._is_done(obs)
         info = {}
         reward = self._compute_reward(obs, done)

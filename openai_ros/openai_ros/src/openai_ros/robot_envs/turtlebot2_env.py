@@ -165,12 +165,12 @@ class TurtleBot2Env(robot_gazebo_env.RobotGazeboEnv):
 
     def _check_laser_scan_ready(self):
         self.laser_scan = None
-        rospy.logdebug("Waiting for /kobuki/laser/scan to be READY...")
+        #rospy.logdebug("Waiting for /kobuki/laser/scan to be READY...")
         while self.laser_scan is None and not rospy.is_shutdown():
             try:
                 #self.laser_scan = rospy.wait_for_message("/kobuki/laser/scan", LaserScan, timeout=5.0)
                 self.laser_scan = rospy.wait_for_message("/scan", LaserScan, timeout=5.0)
-                rospy.logdebug("Current /kobuki/laser/scan READY=>")
+                #rospy.logdebug("Current /kobuki/laser/scan READY=>")
 
             except:
                 rospy.logerr("Current /kobuki/laser/scan not ready yet, retrying for getting laser_scan")
@@ -261,7 +261,7 @@ class TurtleBot2Env(robot_gazebo_env.RobotGazeboEnv):
         rospy.logdebug("TurtleBot2 Base Twist Cmd>>" + str(cmd_vel_value))
         self._check_publishers_connection()
         self._cmd_vel_pub.publish(cmd_vel_value)
-        time.sleep(0.2)
+        #time.sleep(0.2)
         #time.sleep(0.02)
         """
         self.wait_until_twist_achieved(cmd_vel_value,
