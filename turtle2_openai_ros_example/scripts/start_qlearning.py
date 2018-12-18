@@ -11,108 +11,167 @@ import rospkg
 # import our training environment
 from openai_ros.task_envs.turtlebot2 import turtlebot2_maze
 from openai_ros.task_envs.turtlebot2 import gz_maze
+import time
+from distutils.dir_util import copy_tree
+import os
+import json
+import liveplot
+import deepq
+
+def detect_monitor_files(training_dir):
+    return [os.path.join(training_dir, f) for f in os.listdir(training_dir) if f.startswith('openaigym')]
+
+def clear_monitor_files(training_dir):
+    files = detect_monitor_files(training_dir)
+    if len(files) == 0:
+        return
+    for file in files:
+        print(file)
+        os.unlink(file)
 
 if __name__ == '__main__':
 
-    rospy.init_node('turtlebot2_maze_qlearn', anonymous=True, log_level=rospy.WARN)
-
-    # Create the Gym environment
-    #env = gym.make('TurtleBot2Maze-v0')
+    rospy.init_node('turtlebot2_maze_dqn', anonymous=True, log_level=rospy.WARN)
+    #REMEMBER!: turtlebot_nn_setup.bash must be executed.
     env = gym.make('GZMaze-v0')
-    rospy.loginfo("Gym environment done")
+    outdir = '/tmp/gazebo_gym_experiments/'
+    path = '/tmp/turtle_c2_dqn_ep'
+    plotter = liveplot.LivePlot(outdir)
 
-    # Set the logging system
-    rospack = rospkg.RosPack()
-    pkg_path = rospack.get_path('turtle2_openai_ros_example')
-    outdir = pkg_path + '/training_results'
-    env = wrappers.Monitor(env, outdir, force=True)
-    rospy.loginfo("Monitor Wrapper started")
+    continue_execution = False
+    #fill this if continue_execution=True
+    resume_epoch = '200' # change to epoch to continue from
+    resume_path = path + resume_epoch
+    weights_path = resume_path + '.h5'
+    monitor_path = resume_path
+    params_json  = resume_path + '.json'
 
-    last_time_steps = numpy.ndarray(0)
+    if not continue_execution:
+        #Each time we take a sample and update our weights it is called a mini-batch.
+        #Each time we run through the entire dataset, it's called an epoch.
+        #PARAMETER LIST
+        epochs = 1000
+        steps = 1000
+        updateTargetNetwork = 10000
+        explorationRate = 1
+        minibatch_size = 64
+        learnStart = 64
+        learningRate = 0.00025
+        discountFactor = 0.99
+        memorySize = 1000000
+        network_inputs = 100
+        network_outputs = 21
+        network_structure = [300,300]
+        current_epoch = 0
 
-    # Loads parameters from the ROS param server
-    # Parameters are stored in a yaml file inside the config directory
-    # They are loaded at runtime by the launch file
-    Alpha = rospy.get_param("/turtlebot2/alpha")
-    Epsilon = rospy.get_param("/turtlebot2/epsilon")
-    Gamma = rospy.get_param("/turtlebot2/gamma")
-    epsilon_discount = rospy.get_param("/turtlebot2/epsilon_discount")
-    nepisodes = rospy.get_param("/turtlebot2/nepisodes")
-    nsteps = rospy.get_param("/turtlebot2/nsteps")
+        deepQ = deepq.DeepQ(network_inputs, network_outputs, memorySize, discountFactor, learningRate, learnStart)
+        deepQ.initNetworks(network_structure)
+    else:
+        #Load weights, monitor info and parameter info.
+        #ADD TRY CATCH fro this else
+        with open(params_json) as outfile:
+            d = json.load(outfile)
+            epochs = d.get('epochs')
+            steps = d.get('steps')
+            updateTargetNetwork = d.get('updateTargetNetwork')
+            explorationRate = d.get('explorationRate')
+            minibatch_size = d.get('minibatch_size')
+            learnStart = d.get('learnStart')
+            learningRate = d.get('learningRate')
+            discountFactor = d.get('discountFactor')
+            memorySize = d.get('memorySize')
+            network_inputs = d.get('network_inputs')
+            network_outputs = d.get('network_outputs')
+            network_structure = d.get('network_structure')
+            current_epoch = d.get('current_epoch')
 
-    running_step = rospy.get_param("/turtlebot2/running_step")
+        deepQ = deepq.DeepQ(network_inputs, network_outputs, memorySize, discountFactor, learningRate, learnStart)
+        deepQ.initNetworks(network_structure)
 
-    # Initialises the algorithm that we are going to use for learning
-    qlearn = qlearn.QLearn(actions=range(env.action_space.n),
-                           alpha=Alpha, gamma=Gamma, epsilon=Epsilon)
-    initial_epsilon = qlearn.epsilon
+        deepQ.loadWeights(weights_path)
 
-    start_time = time.time()
+        clear_monitor_files(outdir)
+        copy_tree(monitor_path,outdir)
+
+    env._max_episode_steps = steps # env returns done after _max_episode_steps
+    env = gym.wrappers.Monitor(env, outdir,force=not continue_execution, resume=continue_execution)
+
+    last100Scores = [0] * 100
+    last100ScoresIndex = 0
+    last100Filled = False
+    stepCounter = 0
     highest_reward = 0
 
-    # Starts the main training loop: the one about the episodes to do
-    for x in range(nepisodes):
-        rospy.logdebug("############### START EPISODE=>" + str(x))
+    start_time = time.time()
 
+    #start iterating from 'current epoch'.
+    for epoch in xrange(current_epoch+1, epochs+1, 1):
+        observation = env.reset()
+        #print str(observation)
+        #print len(observation)
         cumulated_reward = 0
         done = False
-        if qlearn.epsilon > 0.05:
-            qlearn.epsilon *= epsilon_discount
+        episode_step = 0
 
-        # Initialize the environment and get first state of the robot
-        observation = env.reset()
-        state = ''.join(map(str, observation))
+        # run until env returns done
+        while not done:
+            # env.render()
+            qValues = deepQ.getQValues(observation)
 
-        # Show on screen the actual situation of the robot
-        # env.render()
-        # for each episode, we test the robot for nsteps
-        for i in range(nsteps):
-            rospy.logwarn("############### Start Step=>" + str(i))
-            # Pick an action based on the current state
-            action = qlearn.chooseAction(state)
-            rospy.logwarn("Next action is:%d", action)
-            # Execute the action in the environment and get feedback
-            observation, reward, done, info = env.step(action)
+            action = deepQ.selectAction(qValues, explorationRate)
 
-            rospy.logwarn(str(observation) + " " + str(reward))
+            newObservation, reward, done, info = env.step(action)
+
             cumulated_reward += reward
             if highest_reward < cumulated_reward:
                 highest_reward = cumulated_reward
 
-            nextState = ''.join(map(str, observation))
+            deepQ.addMemory(observation, action, reward, newObservation, done)
 
-            # Make the algorithm learn based on the results
-            rospy.logwarn("# state we were=>" + str(state))
-            rospy.logwarn("# action that we took=>" + str(action))
-            rospy.logwarn("# reward that action gave=>" + str(reward))
-            rospy.logwarn("# episode cumulated_reward=>" + str(cumulated_reward))
-            rospy.logwarn("# State in which we will start next step=>" + str(nextState))
-            qlearn.learn(state, action, reward, nextState)
+            if stepCounter >= learnStart:
+                if stepCounter <= updateTargetNetwork:
+                    deepQ.learnOnMiniBatch(minibatch_size, False)
+                else :
+                    deepQ.learnOnMiniBatch(minibatch_size, True)
 
-            if not (done):
-                rospy.logwarn("NOT DONE")
-                state = nextState
-            else:
-                rospy.logwarn("DONE")
-                last_time_steps = numpy.append(last_time_steps, [int(i + 1)])
-                break
-            rospy.logwarn("############### END Step=>" + str(i))
-            #raw_input("Next Step...PRESS KEY")
-            # rospy.sleep(2.0)
-        m, s = divmod(int(time.time() - start_time), 60)
-        h, m = divmod(m, 60)
-        rospy.logerr(("EP: " + str(x + 1) + " - [alpha: " + str(round(qlearn.alpha, 2)) + " - gamma: " + str(
-            round(qlearn.gamma, 2)) + " - epsilon: " + str(round(qlearn.epsilon, 2)) + "] - Reward: " + str(
-            cumulated_reward) + "     Time: %d:%02d:%02d" % (h, m, s)))
+            observation = newObservation
 
-    rospy.loginfo(("\n|" + str(nepisodes) + "|" + str(qlearn.alpha) + "|" + str(qlearn.gamma) + "|" + str(
-        initial_epsilon) + "*" + str(epsilon_discount) + "|" + str(highest_reward) + "| PICTURE |"))
+            if done:
+                last100Scores[last100ScoresIndex] = episode_step
+                last100ScoresIndex += 1
+                if last100ScoresIndex >= 100:
+                    last100Filled = True
+                    last100ScoresIndex = 0
+                if not last100Filled:
+                    print ("EP " + str(epoch) + " - " + format(episode_step + 1) + "/" + str(steps) + " Episode steps   Exploration=" + str(round(explorationRate, 2)))
+                else :
+                    m, s = divmod(int(time.time() - start_time), 60)
+                    h, m = divmod(m, 60)
+                    print ("EP " + str(epoch) + " - " + format(episode_step + 1) + "/" + str(steps) + " Episode steps - last100 Steps : " + str((sum(last100Scores) / len(last100Scores))) + " - Cumulated R: " + str(cumulated_reward) + "   Eps=" + str(round(explorationRate, 2)) + "     Time: %d:%02d:%02d" % (h, m, s))
+                    if (epoch)%100==0:
+                        #save model weights and monitoring data every 100 epochs.
+                        deepQ.saveModel(path+str(epoch)+'.h5')
+                        env._flush()
+                        copy_tree(outdir,path+str(epoch))
+                        #save simulation parameters.
+                        parameter_keys = ['epochs','steps','updateTargetNetwork','explorationRate','minibatch_size','learnStart','learningRate','discountFactor','memorySize','network_inputs','network_outputs','network_structure','current_epoch']
+                        parameter_values = [epochs, steps, updateTargetNetwork, explorationRate, minibatch_size, learnStart, learningRate, discountFactor, memorySize, network_inputs, network_outputs, network_structure, epoch]
+                        parameter_dictionary = dict(zip(parameter_keys, parameter_values))
+                        with open(path+str(epoch)+'.json', 'w') as outfile:
+                            json.dump(parameter_dictionary, outfile)
 
-    l = last_time_steps.tolist()
-    l.sort()
+            stepCounter += 1
+            if stepCounter % updateTargetNetwork == 0:
+                deepQ.updateTargetNetwork()
+                print ("updating target network")
 
-    # print("Parameters: a="+str)
-    rospy.loginfo("Overall score: {:0.2f}".format(last_time_steps.mean()))
-    rospy.loginfo("Best 100 score: {:0.2f}".format(reduce(lambda x, y: x + y, l[-100:]) / len(l[-100:])))
+            episode_step += 1
+
+        explorationRate *= 0.995 #epsilon decay
+        # explorationRate -= (2.0/epochs)
+        explorationRate = max (0.05, explorationRate)
+
+        if epoch % 100 == 0:
+            plotter.plot(env)
 
     env.close()

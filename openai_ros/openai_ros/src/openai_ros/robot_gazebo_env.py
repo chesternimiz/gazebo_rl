@@ -123,7 +123,7 @@ class RobotGazeboEnv(gym.Env):
             self.gazebo.unpauseSim()
             self.controllers_object.reset_controllers()
             self._check_all_systems_ready()
-            self.gazebo.pauseSim()
+            #self.gazebo.pauseSim()
             
         else:
             rospy.logwarn("DONT RESET CONTROLLERS")
@@ -134,7 +134,7 @@ class RobotGazeboEnv(gym.Env):
             self.gazebo.resetSim()
             self.gazebo.unpauseSim()
             self._check_all_systems_ready()
-            self.gazebo.pauseSim()
+            #self.gazebo.pauseSim()
         
         rospy.logdebug("RESET SIM END")
         return True
